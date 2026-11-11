@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BLACK</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#050505;--card:#0f0f12;--line:#26262c;--tx:#f4f4f5;--mut:#8a8a93;--ac:#ffffff;--ok:#4ade80;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--tx);font-family:-apple-system,"Segoe UI",Tahoma,Arial,sans-serif}
+main{max-width:520px;margin:0 auto;padding:28px 18px 40px;text-align:center}
+.logo{font-family:Impact,"Arial Black",sans-serif;font-size:54px;letter-spacing:10px;margin:18px 0 4px;direction:ltr}
+.sub{color:var(--mut);margin:0 0 26px;font-size:15px}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:18px;background:var(--card);padding:34px 16px;cursor:pointer}
+.drop:active{border-color:var(--ac)}
+.drop b{display:block;font-size:17px;margin-bottom:6px}
+.drop span{color:var(--mut);font-size:14px;word-break:break-all}
+input[type=file]{display:none}
+button{width:100%;margin-top:14px;padding:16px;border:0;border-radius:14px;background:var(--ac);color:#000;font-size:17px;font-weight:700;cursor:pointer;font-family:inherit}
+button:disabled{opacity:.35;cursor:default}
+button.alt{background:transparent;color:var(--tx);border:1px solid var(--line)}
+.bar{height:6px;background:var(--line);border-radius:6px;margin-top:18px;overflow:hidden;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--ac);transition:width .15s}
+#msg{margin-top:14px;color:var(--mut);font-size:14px;min-height:20px}
+#res{display:none;margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--card)}
+#res .ok{color:var(--ok);font-weight:700;margin-bottom:10px}
+audio{width:100%}
+small{display:block;color:var(--mut);margin-top:10px;font-size:12.5px;line-height:1.6}
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">BLACK</div>
+  <p class="sub">حوّل الفيديو ديالك لـ MP3 بنقرة وحدة</p>
+
+  <label class="drop" for="f">
+    <b>اختار فيديو أو ملف صوتي</b>
+    <span id="fn">MP4 · MOV · WEBM · M4A · WAV</span>
+  </label>
+  <input id="f" type="file" accept="video/*,audio/*">
+
+  <button id="go" disabled>حوّل لـ MP3</button>
+  <div class="bar" id="bar"><i id="pr"></i></div>
+  <div id="msg"></div>
+
+  <div id="res">
+    <div class="ok">الملف واجد ✓</div>
+    <audio id="pl" controls></audio>
+    <button id="sv">حفظ الملف</button>
+    <small id="note"></small>
+  </div>
+  <small>كلشي كيتدار فالمتصفح ديالك، الملف ما كيتصيفط لحتى سيرفر. استعمل غير ملفات عندك الحق فيها.</small>
+</main>
+<script>
+var $ = function(id){return document.getElementById(id)};
+var file = null, mp3 = null, base = 'black';
+
+$('f').onchange = function(e){
+  file = e.target.files[0];
+  if(!file) return;
+  $('fn').textContent = file.name;
+  $('go').disabled = false;
+  $('res').style.display = 'none';
+  $('msg').textContent = '';
+  base = file.name.replace(/\.[^.]+$/, '').replace(/[\\\/:*?"<>|]+/g, ' ').trim() || 'black';
+};
+
+function toI16(f){
+  var o = new Int16Array(f.length);
+  for(var i = 0; i < f.length; i++){
+    var s = Math.max(-1, Math.min(1, f[i]));
+    o[i] = s < 0 ? s * 32768 : s * 32767;
+  }
+  return o;
+}
+var tick = function(){return new Promise(function(r){setTimeout(r, 0)})};
+
+$('go').onclick = async function(){
+  var go = $('go'), bar = $('bar'), pr = $('pr'), msg = $('msg');
+  try{
+    if(!window.lamejs) throw new Error('lib');
+    go.disabled = true; bar.style.display = 'block'; pr.style.width = '3%';
+    $('res').style.display = 'none';
+    msg.textContent = 'كنقرا الملف...';
+    var buf = await file.arrayBuffer();
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    var ctx = new Ctx();
+    msg.textContent = 'كنفك الصوت...';
+    var ab = await new Promise(function(res, rej){ctx.decodeAudioData(buf, res, rej)});
+    try{ctx.close()}catch(e){}
+    var ch = Math.min(ab.numberOfChannels, 2);
+    var enc = new lamejs.Mp3Encoder(ch, ab.sampleRate, 128);
+    var L = toI16(ab.getChannelData(0));
+    var R = ch > 1 ? toI16(ab.getChannelData(1)) : null;
+    var parts = [], B = 1152 * 20, n = 0;
+    msg.textContent = 'كنحول لـ MP3...';
+    for(var i = 0; i < L.length; i += B){
+      var out = ch > 1 ? enc.encodeBuffer(L.subarray(i, i + B), R.subarray(i, i + B)) : enc.encodeBuffer(L.subarray(i, i + B));
+      if(out.length) parts.push(new Uint8Array(out));
+      if(++n % 8 === 0){pr.style.width = Math.round(5 + 90 * i / L.length) + '%'; await tick();}
+    }
+    var end = enc.flush();
+    if(end.length) parts.push(new Uint8Array(end));
+    mp3 = new Blob(parts, {type: 'audio/mpeg'});
+    pr.style.width = '100%';
+    msg.textContent = '';
+    try{$('pl').src = URL.createObjectURL(mp3)}catch(e){}
+    $('res').style.display = 'block';
+    setupSave();
+  }catch(err){
+    msg.textContent = 'ما قدرتش نحول هاد الملف. جرب ملف آخر (MP4 ولا M4A ولا WAV).';
+    bar.style.display = 'none';
+  }
+  go.disabled = false;
+};
+
+function crc32(u){
+  var t = crc32.t;
+  if(!t){
+    t = crc32.t = [];
+    for(var n = 0; n < 256; n++){var c = n; for(var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0;}
+  }
+  var r = -1;
+  for(var i = 0; i < u.length; i++) r = t[(r ^ u[i]) & 255] ^ (r >>> 8);
+  return (r ^ -1) >>> 0;
+}
+function makeZip(fname, data){
+  var nm = new TextEncoder().encode(fname), crc = crc32(data), sz = data.length;
+  var lh = new DataView(new ArrayBuffer(30));
+  lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+  lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
+  var cd = new DataView(new ArrayBuffer(46));
+  cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
+  cd.setUint32(16, crc, true); cd.setUint32(20, sz, true); cd.setUint32(24, sz, true); cd.setUint16(28, nm.length, true);
+  var e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, 1, true); e.setUint16(10, 1, true);
+  e.setUint32(12, 46 + nm.length, true); e.setUint32(16, 30 + nm.length + sz, true);
+  return new Blob([lh, nm, data, cd, nm, e]);
+}
+
+async function setupSave(){
+  var dl = null;
+  try{dl = await claude.use('downloads')}catch(e){}
+  var sv = $('sv'), note = $('note');
+  if(!dl){
+    note.textContent = 'ضغط على «حفظ الملف» باش يتحمل الـ MP3.';
+    sv.onclick = function(){
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(mp3);
+      a.download = base + '.mp3';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    return;
+  }
+  note.textContent = 'غادي يتحفظ داخل ملف ZIP فيه الـ MP3. فتحو (فالتليفون: ضغطة وحدة فتطبيق Files) باش يخرج ليك الملف.';
+  sv.onclick = async function(){
+    try{
+      var data = new Uint8Array(await mp3.arrayBuffer());
+      await dl.save({filename: base + '.zip', data: makeZip(base + '.mp3', data)});
+    }catch(err){
+      if(err && err.code !== 'declined') $('msg').textContent = 'وقع مشكل فالحفظ، عاود حاول.';
+    }
+  };
+}
+</script>
+</body>
+</html>
